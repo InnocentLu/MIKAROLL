@@ -1,0 +1,4 @@
+markdown>=3.5.0
+pillow-heif>=0.14.0
+pillow-avif-plugin
+ttkbootstrap>=1.10.1

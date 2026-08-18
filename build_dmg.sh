@@ -40,7 +40,7 @@ create-dmg \
     --background "${BG_IMG}" \
     --window-pos 200 120 \
     --window-size 800 600 \
-    --icon-size 140 \
+    --icon-size 180 \
     --icon "${APP_NAME}.app" 240 280 \
     --app-drop-link 560 280 \
     --text-size 14 \

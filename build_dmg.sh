@@ -7,7 +7,7 @@ set -e
 
 APP_NAME="MikaRoll"
 APP_PATH="dist/${APP_NAME}.app"
-DMG_NAME="${APP_NAME}.dmg"
+DMG_NAME="MikaRoll Finall.dmg"
 DMG_DIR="dist"
 VOLUME_NAME="${APP_NAME}"
 BG_IMG="image/dmg_arrow_bg.png"

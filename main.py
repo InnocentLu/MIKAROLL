@@ -1185,4 +1185,22 @@ if __name__ == "__main__":
             print(f"Icon load error: {e}")
 
     app = UniversalConverterApp(root)
+    
+    if sys.platform == "darwin":
+        def on_reopen(*args):
+            root.deiconify()
+            root.lift()
+            root.focus_force()
+            
+        def on_close():
+            root.withdraw()
+            
+        root.createcommand("::tk::mac::ReopenApplication", on_reopen)
+        root.protocol("WM_DELETE_WINDOW", on_close)
+    else:
+        def on_close():
+            root.destroy()
+            sys.exit(0)
+        root.protocol("WM_DELETE_WINDOW", on_close)
+
     root.mainloop()

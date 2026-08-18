@@ -9,7 +9,7 @@ APP_NAME="MikaRoll"
 APP_PATH="dist/${APP_NAME}.app"
 DMG_NAME="${APP_NAME}.dmg"
 DMG_DIR="dist"
-VOLUME_NAME="${APP_NAME} Setup"
+VOLUME_NAME="${APP_NAME} Final"
 BG_IMG="image/dmg_arrow_bg.png"
 ICON_PATH="image/icon.ico"
 
@@ -38,10 +38,10 @@ create-dmg \
     --volicon "${ICON_PATH}" \
     --background "${BG_IMG}" \
     --window-pos 200 120 \
-    --window-size 540 380 \
-    --icon-size 110 \
-    --icon "${APP_NAME}.app" 140 190 \
-    --app-drop-link 400 190 \
+    --window-size 800 600 \
+    --icon-size 140 \
+    --icon "${APP_NAME}.app" 240 280 \
+    --app-drop-link 560 280 \
     --text-size 14 \
     --no-internet-enable \
     "${DMG_DIR}/${DMG_NAME}" \

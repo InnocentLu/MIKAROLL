@@ -1,4 +1,12 @@
+Pillow>=9.0.0
+customtkinter>=5.2.2
+PyMuPDF>=1.23.0
 markdown>=3.5.0
-pillow-heif>=0.14.0
+pdf2docx>=0.5.6
 pillow-avif-plugin
+pillow-heif>=0.14.0
+pygments
+tkinterdnd2>=0.3.0
+playwright>=1.40.0
 ttkbootstrap>=1.10.1
+pyinstaller>=6.0.0

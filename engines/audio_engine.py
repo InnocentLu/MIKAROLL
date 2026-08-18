@@ -36,7 +36,7 @@ def convert_audio_video(input_path, output_path):
     
     # 前置检查 FFmpeg 环境
     ffmpeg_cmd = "ffmpeg"
-    local_ffmpeg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ffmpeg.exe')
+    local_ffmpeg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
     if os.path.exists(local_ffmpeg):
         ffmpeg_cmd = local_ffmpeg
     elif not shutil.which("ffmpeg"):
@@ -78,8 +78,11 @@ def convert_audio_video(input_path, output_path):
                 
             input_path = temp_file_path # Override input path for ffmpeg
             
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        kwargs = {}
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kwargs['startupinfo'] = startupinfo
         
         # 使用列表传递参数，彻底杜绝空格引发的路径截断问题
         command = [ffmpeg_cmd, '-y', '-i', input_path]
@@ -94,7 +97,7 @@ def convert_audio_video(input_path, output_path):
             
         command.append(output_path)
         
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, startupinfo=startupinfo)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
         _, stderr = process.communicate()
         
         if temp_file_path and os.path.exists(temp_file_path):

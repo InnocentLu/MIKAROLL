@@ -53,10 +53,15 @@ from engines.doc_engine import convert_document
 from utils.helpers import get_unique_filename
 
 CONVERSION_MAP = {
-    '.pptx': ['.pdf', '.docx', '.png', '.jpg'],
-    '.ppt': ['.pdf', '.docx', '.png', '.jpg'],
-    '.docx': ['.pdf', '.md', '.txt'],
-    '.doc': ['.pdf', '.md', '.txt'],
+    '.pptx': ['.pdf', '.key', '.docx', '.png', '.jpg'],
+    '.ppt': ['.pdf', '.key', '.docx', '.png', '.jpg'],
+    '.key': ['.pdf', '.pptx', '.png', '.jpg'],
+    '.docx': ['.pdf', '.pages', '.md', '.txt'],
+    '.doc': ['.pdf', '.pages', '.md', '.txt'],
+    '.pages': ['.pdf', '.docx', '.txt'],
+    '.xlsx': ['.pdf', '.numbers', '.csv'],
+    '.xls': ['.pdf', '.numbers', '.csv'],
+    '.numbers': ['.pdf', '.xlsx', '.csv'],
     '.pdf': ['.docx', '.png', '.jpg', '.txt'],
     '.md': ['.pdf', '.docx', '.html', '.txt'],
     '.markdown': ['.pdf', '.docx', '.html', '.txt'],
@@ -670,6 +675,72 @@ class UniversalConverterApp:
         self._current_theme = saved_theme
         self.on_theme_change(saved_theme, animate=False)
 
+        # ── 首次启动彩蛋 ──
+        self.root.after(500, self._check_first_run)
+
+    def _check_first_run(self):
+        """检测是否为首次启动，弹出 Mika 主题欢迎弹窗"""
+        cfg = load_config()
+        if cfg.get("first_run_done"):
+            return
+
+        # ── 构建弹窗 ──
+        overlay = ctk.CTkFrame(self.root, fg_color="rgba(0,0,0,0.45)")
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        popup = ctk.CTkFrame(overlay, corner_radius=20, fg_color="#FFF0F5", border_width=2, border_color="#FFB6C1")
+        popup.place(relx=0.5, rely=0.5, anchor="center", width=420, height=340)
+
+        # 尝试加载 icon 图片
+        try:
+            icon_img = Image.open(get_resource_path("image/icon.jpg"))
+            icon_img = icon_img.resize((80, 80), Image.LANCZOS)
+            icon_ctk = ctk.CTkImage(light_image=icon_img, dark_image=icon_img, size=(80, 80))
+            icon_label = ctk.CTkLabel(popup, image=icon_ctk, text="")
+            icon_label.pack(pady=(25, 10))
+        except Exception:
+            pass
+
+        # 标题
+        title = ctk.CTkLabel(
+            popup, text="✨ MikaRoll ✨",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color="#D4547A"
+        )
+        title.pack(pady=(5, 8))
+
+        # 彩蛋台词
+        msg = ctk.CTkLabel(
+            popup,
+            text="感谢 sensei 把 Mika 带回家！",
+            font=ctk.CTkFont(size=16),
+            text_color="#8B4567",
+            wraplength=350
+        )
+        msg.pack(pady=(0, 5))
+
+        subtitle = ctk.CTkLabel(
+            popup,
+            text="愿每一次转换，都如魔法般顺滑 ♡",
+            font=ctk.CTkFont(size=13),
+            text_color="#C48BA0"
+        )
+        subtitle.pack(pady=(0, 20))
+
+        def _dismiss():
+            save_config("first_run_done", True)
+            overlay.destroy()
+
+        ok_btn = ctk.CTkButton(
+            popup, text="Mika，出发！",
+            fg_color="#FF9FB3", hover_color="#FF7A95",
+            text_color="white",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            corner_radius=12, height=40, width=180,
+            command=_dismiss
+        )
+        ok_btn.pack(pady=(0, 20))
+
     # ─────────────────────────────────────────────
     #  主题应用
     # ─────────────────────────────────────────────
@@ -1062,7 +1133,13 @@ class UniversalConverterApp:
                 error_details = "\n".join(errors)
                 messagebox.showwarning("部分文件转换失败", f"部分文件转换失败，以下是详细错误日志：\n\n{error_details}")
             else:
-                self.anim.typewriter(self.status_var, "mika已经全部吃完啦！", delay_ms=35)
+                import sys
+                if sys.platform == 'darwin' and last_output and last_output.lower().endswith('.pdf'):
+                    self.anim.typewriter(self.status_var, "mika已经全部吃完啦！正在打开预览...", delay_ms=35)
+                    import subprocess
+                    subprocess.Popen(["open", last_output])
+                else:
+                    self.anim.typewriter(self.status_var, "mika已经全部吃完啦！", delay_ms=35)
                 self.status_label.configure(text_color="#81C784" if self._current_theme != "午夜黑" else "#66BB6A")
             self.open_folder_btn.pack(side=tk.TOP, pady=10)
         else:

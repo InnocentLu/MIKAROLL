@@ -1177,10 +1177,12 @@ if __name__ == "__main__":
     root = CTk_DnD()
 
     icon_path = get_resource_path("image/icon.ico")
-    try:
-        root.iconbitmap(icon_path)
-    except Exception as e:
-        print(f"Icon load error: {e}")
+    import sys
+    if sys.platform == "win32":
+        try:
+            root.iconbitmap(icon_path)
+        except Exception as e:
+            print(f"Icon load error: {e}")
 
     app = UniversalConverterApp(root)
     root.mainloop()

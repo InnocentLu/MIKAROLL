@@ -1174,67 +1174,67 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-def check_auto_install(root_win):
-    import sys
-    import os
-    import subprocess
-    import tkinter.messagebox as messagebox
-
-    if sys.platform != "darwin":
-        return
-
-    exe_path = sys.executable
-    if not exe_path.startswith("/Volumes/"):
-        return
-
-    parts = exe_path.split("/")
-    if len(parts) >= 3:
-        volume_path = "/" + "/".join(parts[1:3])
-    else:
-        return
-
-    if not messagebox.askyesno("MikaRoll 安装助手", "检测到您正在临时挂载卷中运行。\n\n是否一键安装至「应用程序」文件夹，并自动清理安装包？", parent=root_win):
-        return
-
-    source_dmg = None
-    try:
-        import plistlib
-        out = subprocess.check_output(['hdiutil', 'info', '-plist'])
-        data = plistlib.loads(out)
-        for item in data.get('images', []):
-            image_path = item.get('image-path', '')
-            for entity in item.get('system-entities', []):
-                if entity.get('mount-point') == volume_path:
-                    source_dmg = image_path
+    def check_auto_install(root_win):
+        import sys
+        import os
+        import subprocess
+        import tkinter.messagebox as messagebox
+    
+        if sys.platform != "darwin":
+            return
+    
+        exe_path = sys.executable
+        if not exe_path.startswith("/Volumes/"):
+            return
+    
+        parts = exe_path.split("/")
+        if len(parts) >= 3:
+            volume_path = "/" + "/".join(parts[1:3])
+        else:
+            return
+    
+        if not messagebox.askyesno("MikaRoll 安装助手", "检测到您正在临时挂载卷中运行。\n\n是否一键安装至「应用程序」文件夹，并自动清理安装包？", parent=root_win):
+            return
+    
+        source_dmg = None
+        try:
+            import plistlib
+            out = subprocess.check_output(['hdiutil', 'info', '-plist'])
+            data = plistlib.loads(out)
+            for item in data.get('images', []):
+                image_path = item.get('image-path', '')
+                for entity in item.get('system-entities', []):
+                    if entity.get('mount-point') == volume_path:
+                        source_dmg = image_path
+                        break
+                if source_dmg:
                     break
-            if source_dmg:
-                break
-    except Exception as e:
-        print(f"Failed to find source DMG: {e}")
-
-    app_name = "MikaRoll.app"
-    source_app = os.path.join(volume_path, app_name)
-    target_app = os.path.join("/Applications", app_name)
-
-    try:
-        subprocess.run(["ditto", source_app, target_app], check=True)
-    except Exception as e:
-        messagebox.showerror("安装失败", f"复制文件至应用程序文件夹失败:\n{e}", parent=root_win)
-        return
-
-    subprocess.Popen(["open", target_app])
-
-    script = f"""
+        except Exception as e:
+            print(f"Failed to find source DMG: {e}")
+    
+        app_name = "MikaRoll.app"
+        source_app = os.path.join(volume_path, app_name)
+        target_app = os.path.join("/Applications", app_name)
+    
+        try:
+            subprocess.run(["ditto", source_app, target_app], check=True)
+        except Exception as e:
+            messagebox.showerror("安装失败", f"复制文件至应用程序文件夹失败:\n{e}", parent=root_win)
+            return
+    
+        subprocess.Popen(["open", target_app])
+    
+        script = f"""
 sleep 1.5
 hdiutil detach "{volume_path}" -force
 """
-    if source_dmg and os.path.exists(source_dmg):
-        script += f"""osascript -e 'tell application "Finder" to delete POSIX file "{source_dmg}"'
+        if source_dmg and os.path.exists(source_dmg):
+            script += f"""osascript -e 'tell application "Finder" to delete POSIX file "{source_dmg}"'
 """
-    subprocess.Popen(["sh", "-c", script], start_new_session=True)
-    sys.exit(0)
-
-
+        subprocess.Popen(["sh", "-c", script], start_new_session=True)
+        sys.exit(0)
+    
+    
     root = CTk_DnD()
     root.withdraw()
     

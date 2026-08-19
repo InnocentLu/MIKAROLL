@@ -30,6 +30,10 @@ fi
 echo "📦 正在将本地 Playwright 内核静态注入到 .app 内部..."
 cp -R ./ms-playwright "$APP_PATH/Contents/Frameworks/"
 
+echo "🔐 正在清理不兼容签名的追踪缓存并执行深度自签名..."
+rm -rf "$APP_PATH/Contents/Frameworks/ms-playwright/.links"
+codesign --force --deep --sign - "$APP_PATH"
+
 # 清理旧 DMG
 rm -f "${DMG_DIR}/${DMG_NAME}"
 

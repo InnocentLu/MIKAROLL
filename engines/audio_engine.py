@@ -39,7 +39,13 @@ def convert_audio_video(input_path, output_path):
     local_ffmpeg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'bin', 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
     if os.path.exists(local_ffmpeg):
         ffmpeg_cmd = local_ffmpeg
-    elif not shutil.which("ffmpeg"):
+    elif shutil.which("ffmpeg"):
+        ffmpeg_cmd = "ffmpeg"
+    elif os.path.exists("/opt/homebrew/bin/ffmpeg"):
+        ffmpeg_cmd = "/opt/homebrew/bin/ffmpeg"
+    elif os.path.exists("/usr/local/bin/ffmpeg"):
+        ffmpeg_cmd = "/usr/local/bin/ffmpeg"
+    else:
         return False, "系统未安装 FFmpeg，请先安装配置，或将其放置在 bin 目录下。"
 
     if not os.path.exists(input_path):

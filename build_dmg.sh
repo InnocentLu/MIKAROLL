@@ -25,9 +25,7 @@ if ! command -v create-dmg &> /dev/null; then
     brew install create-dmg
 fi
 
-echo "📦 正在注入 Playwright 极简内核 (仅保留 headless shell)..."
-mkdir -p "$APP_PATH/Contents/MacOS/ms-playwright"
-cp -R ~/Library/Caches/ms-playwright/chromium_headless_shell-* "$APP_PATH/Contents/MacOS/ms-playwright/" 2>/dev/null || true
+
 
 # 清理旧 DMG
 rm -f "${DMG_DIR}/${DMG_NAME}"

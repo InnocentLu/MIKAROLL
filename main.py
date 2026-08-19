@@ -1,4 +1,11 @@
 import os
+import sys
+
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包环境
+    base_path = sys._MEIPASS
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(base_path, "ms-playwright")
+
 import re
 import threading
 import tkinter as tk

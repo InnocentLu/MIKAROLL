@@ -28,7 +28,7 @@ fi
 
 
 echo "📦 正在将本地 Playwright 内核静态注入到 .app 内部..."
-cp -R ./ms-playwright "$APP_PATH/Contents/MacOS/"
+cp -R ./ms-playwright "$APP_PATH/Contents/Frameworks/"
 
 # 清理旧 DMG
 rm -f "${DMG_DIR}/${DMG_NAME}"

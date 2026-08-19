@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 import os
 
-datas = [('image', 'image'), ('engines', 'engines'), ('utils', 'utils'), ('ms-playwright', 'ms-playwright')]
+datas = [('image', 'image'), ('engines', 'engines'), ('utils', 'utils')]
 
 binaries = []
 hiddenimports = ['pyexpat', 'xml.parsers.expat']

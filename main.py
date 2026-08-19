@@ -13,8 +13,6 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from PIL import Image, ImageSequence
 
-import sys
-
 def get_resource_path(relative_path):
     """ 获取资源的绝对路径，兼容开发环境与 PyInstaller 打包环境 """
     if hasattr(sys, '_MEIPASS'):
@@ -608,6 +606,11 @@ class UniversalConverterApp:
         self.browse_out_btn.pack(side=tk.RIGHT)
         self.secondary_buttons.append(self.browse_out_btn)
 
+        # 添加页码复选框
+        self.format_enhance_var = tk.BooleanVar(value=False)
+        self.format_enhance_cb = ctk.CTkCheckBox(dir_frame, text="添加目录与底部页码", variable=self.format_enhance_var)
+        self.format_enhance_cb.pack(anchor=tk.W, padx=15, pady=(5, 0))
+
         self.filename_mode_var = tk.StringVar(value="keep")
         self.keep_rb = ctk.CTkRadioButton(
             dir_frame, text="保持原文件名",
@@ -664,14 +667,26 @@ class UniversalConverterApp:
         self.progress_bar.set(0)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
+        btn_frame = ctk.CTkFrame(bottom_right, fg_color="transparent")
+        btn_frame.pack(fill=tk.X)
+
         self.convert_btn = ctk.CTkButton(
-            bottom_right, text="开 始 转 换",
+            btn_frame, text="开 始 转 换",
             font=ctk.CTkFont(weight="bold", size=18),
             command=self.start_conversion, height=55
         )
-        self.convert_btn.pack(fill=tk.X)
+        self.convert_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.primary_buttons.append(self.convert_btn)
 
+        self.stop_btn = ctk.CTkButton(
+            btn_frame, text="停 止 转 换",
+            font=ctk.CTkFont(weight="bold", size=16),
+            command=self.request_stop, height=55, width=120,
+            fg_color="#cccccc", text_color="#666666", hover_color="#bbbbbb", state="disabled"
+        )
+        self.stop_btn.pack(side=tk.RIGHT)
+
+        self.stop_requested = threading.Event()
         self._is_breathing = False
 
         # ── 应用初始主题 ──
@@ -692,11 +707,11 @@ class UniversalConverterApp:
             return
 
         # ── 构建弹窗 ──
-        overlay = ctk.CTkFrame(self.root, fg_color="rgba(0,0,0,0.45)")
+        overlay = ctk.CTkFrame(self.root, fg_color="#2b2b2b")
         overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        popup = ctk.CTkFrame(overlay, corner_radius=20, fg_color="#FFF0F5", border_width=2, border_color="#FFB6C1")
-        popup.place(relx=0.5, rely=0.5, anchor="center", width=420, height=340)
+        popup = ctk.CTkFrame(overlay, width=420, height=340, corner_radius=20, fg_color="#FFF0F5", border_width=2, border_color="#FFB6C1")
+        popup.place(relx=0.5, rely=0.5, anchor="center")
 
         # 尝试加载 icon 图片
         try:
@@ -843,8 +858,8 @@ class UniversalConverterApp:
     # ─────────────────────────────────────────────
     #  UI 状态切换
     # ─────────────────────────────────────────────
-    def toggle_ui_state(self, disabled=False):
-        state = 'disabled' if disabled else 'normal'
+    def _set_ui_state(self, is_converting: bool):
+        state = 'disabled' if is_converting else 'normal'
         self.input_entry.configure(state=state)
         self.browse_input_btn.configure(state=state)
         self.format_combo.configure(state=state)
@@ -852,15 +867,38 @@ class UniversalConverterApp:
         self.browse_out_btn.configure(state=state)
         self.keep_rb.configure(state=state)
         self.custom_rb.configure(state=state)
+        self.format_enhance_cb.configure(state=state)
         self.convert_btn.configure(state=state)
 
-        if disabled:
+        if is_converting:
             self.custom_filename_entry.configure(state='disabled')
+            # 激活“停止”按钮
+            c = THEMES[self._current_theme]
+            self.stop_btn.configure(
+                state="normal",
+                fg_color="#FF4C4C", hover_color="#D83A3A", text_color="white"
+            )
         else:
             if self.filename_mode_var.get() == "custom":
                 self.custom_filename_entry.configure(state='normal')
             else:
                 self.custom_filename_entry.configure(state='disabled')
+            # 禁用“停止”按钮
+            self.stop_btn.configure(
+                state="disabled",
+                text="停 止 转 换",
+                fg_color="#cccccc", hover_color="#bbbbbb", text_color="#666666"
+            )
+
+    def toggle_ui_state(self, disabled=False):
+        # 兼容旧代码调用
+        self._set_ui_state(disabled)
+
+    def request_stop(self):
+        if not self.stop_requested.is_set():
+            self.stop_requested.set()
+            self.anim.typewriter(self.status_var, "正在停止并清理资源，请稍候...", delay_ms=20)
+            self.stop_btn.configure(state="disabled", text="停 止 中 ...", fg_color="#cccccc")
 
     # ─────────────────────────────────────────────
     #  文件处理
@@ -1033,6 +1071,7 @@ class UniversalConverterApp:
             self.status_label.configure(text_color="#E57373")
             return
 
+        self.stop_requested.clear()
         self.toggle_ui_state(disabled=True)
         self.open_folder_btn.pack_forget()
         self.convert_btn.configure(text="转 换 中 ...")
@@ -1064,6 +1103,7 @@ class UniversalConverterApp:
         total = len(input_files)
         errors = []
         last_output = None
+        was_stopped = False
 
         if total > 1:
             use_custom = False
@@ -1074,52 +1114,80 @@ class UniversalConverterApp:
                             '.qmcflac', '.qmcogg', '.qmc0', '.qmc2', '.qmc3', '.qmc4', '.qmc6', '.qmc8']
         doc_exts = ['.pptx', '.ppt', '.docx', '.doc', '.pdf', '.md', '.markdown']
 
-        for idx, input_file in enumerate(input_files):
-            if total > 1:
-                pct = idx / total
-                self.root.after(0, self.update_batch_progress, f"正在转换 ({idx+1}/{total}) - {int(pct*100)}%", pct)
+        try:
+            for idx, input_file in enumerate(input_files):
+                if self.stop_requested.is_set():
+                    was_stopped = True
+                    break
 
-            _, filename = os.path.split(input_file)
-            clean_name = re.sub(r'@[^.]+', '', filename)
-            orig_name, _ = os.path.splitext(clean_name)
-            _, in_ext = os.path.splitext(clean_name)
-            in_ext = in_ext.lower()
+                if total > 1:
+                    pct = idx / total
+                    self.root.after(0, self.update_batch_progress, f"正在转换 ({idx+1}/{total}) - {int(pct*100)}%", pct)
 
-            name_to_use = custom_name if use_custom else orig_name
-            expected_output = os.path.join(output_dir, f"{name_to_use}{target_ext}")
-            final_output = get_unique_filename(expected_output)
+                _, filename = os.path.split(input_file)
+                clean_name = re.sub(r'@[^.]+', '', filename)
+                orig_name, _ = os.path.splitext(clean_name)
+                _, in_ext = os.path.splitext(clean_name)
+                in_ext = in_ext.lower()
 
-            if in_ext in image_exts:
-                success, error_msg = convert_image(input_file, final_output)
-            elif in_ext in audio_video_exts:
-                success, error_msg = convert_audio_video(input_file, final_output)
-            elif in_ext in doc_exts:
-                success, error_msg = convert_document(input_file, final_output)
-            else:
-                success = False
-                error_msg = "未找到对应的转换引擎。"
+                name_to_use = custom_name if use_custom else orig_name
+                expected_output = os.path.join(output_dir, f"{name_to_use}{target_ext}")
+                final_output = get_unique_filename(expected_output)
 
-            if success:
-                success_count += 1
-                last_output = final_output
-            else:
-                errors.append(f"{filename}: {error_msg}")
+                if in_ext in image_exts:
+                    success, error_msg = convert_image(input_file, final_output)
+                elif in_ext in audio_video_exts:
+                    success, error_msg = convert_audio_video(input_file, final_output)
+                elif in_ext in doc_exts:
+                    success, error_msg = convert_document(input_file, final_output, format_enhance=self.format_enhance_var.get(), stop_event=self.stop_requested)
+                else:
+                    success = False
+                    error_msg = "未找到对应的转换引擎。"
 
-        if total > 1:
-            self.root.after(0, self.update_batch_progress, "转换收尾中...", 1.0)
-            import time
-            time.sleep(0.3)
+                if success:
+                    success_count += 1
+                    last_output = final_output
+                else:
+                    if self.stop_requested.is_set():
+                        # 清理生成了一半的文件
+                        if os.path.exists(final_output):
+                            try: os.remove(final_output)
+                            except: pass
+                        was_stopped = True
+                        break
+                    errors.append(f"{filename}: {error_msg}")
 
-        self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors)
+            if not was_stopped and total > 1:
+                self.root.after(0, self.update_batch_progress, "转换收尾中...", 1.0)
+                import time
+                time.sleep(0.3)
+
+            self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors, was_stopped)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: messagebox.showerror("严重错误", f"转换线程发生崩溃:\n{str(e)}"))
+            self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors, was_stopped)
+        finally:
+            self.root.after(0, self.toggle_ui_state, False)
 
     def update_batch_progress(self, msg, val):
         self.status_var.set(msg)
         self.progress_bar.set(val)
 
-    def _on_conversion_complete(self, success_count, total, last_output, errors):
+    def _on_conversion_complete(self, success_count, total, last_output, errors, was_stopped=False):
         self.stop_breathing()
         self.toggle_ui_state(disabled=False)
         self.convert_btn.configure(text="再 次 转 换")
+
+        if was_stopped:
+            self.mascot_mgr.show_start()
+            self.anim.typewriter(self.status_var, f"转换已手动取消。完成 {success_count}/{total}", delay_ms=18)
+            self.status_label.configure(text_color="#FFB74D")
+            self.progress_bar.stop()
+            self.progress_bar.configure(mode='determinate')
+            self.progress_bar.set(success_count / total if total > 0 else 0)
+            return
 
         if success_count > 0:
             self.mascot_mgr.show_down()

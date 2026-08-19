@@ -27,3 +27,6 @@ dist/
 *.swp
 .DS_Store
 Thumbs.db
+ms-playwright/
+scratch/
+config.json

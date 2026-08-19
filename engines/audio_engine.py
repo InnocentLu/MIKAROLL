@@ -15,13 +15,6 @@ try:
 except ImportError:
     HAS_QMC_DECRYPT = False
 
-def sniff_ext(data):
-    if data.startswith(b'fLaC'): return 'flac'
-    if data.startswith(b'OggS'): return 'ogg'
-    if data.startswith(b'ID3') or data.startswith(b'\xff\xfb') or data.startswith(b'\xff\xf2') or data.startswith(b'\xff\xf3'): return 'mp3'
-    if data.startswith(b'\x00\x00\x00 ftypM4A') or data.startswith(b'\x00\x00\x00\x18ftypM4A'): return 'm4a'
-    if data.startswith(b'\x00\x00\x00 ftypdash'): return 'm4a' # typical qq music m4a
-    return 'flac' # fallback
 
 def convert_audio_video(input_path, output_path):
     """

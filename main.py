@@ -513,8 +513,10 @@ class UniversalConverterApp:
             self.cancel(t)
 
     def __init__(self, root):
+        ctk.deactivate_automatic_dpi_awareness()
         self._after_ids = {}
         self.root = root
+        self.root.withdraw()
         self.root.title("MikaRoll - Universal Converter")
         self.root.geometry("980x680+100+100")
         self.root.minsize(850, 600)

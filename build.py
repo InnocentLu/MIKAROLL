@@ -4,7 +4,7 @@ import subprocess
 from PyInstaller.__main__ import run
 
 def build():
-    print(">>> Starting automated PyInstaller modern onedir pipeline...")
+    print(">>> Starting automated PyInstaller high-performance ONEFILE pipeline...")
     
     # 1. Locate Conda DLLs
     conda_base = sys.prefix
@@ -37,7 +37,7 @@ def build():
     args = [
         'main.py',
         '--name=MikaRoll',
-        '--onedir',          # Modern onedir pipeline
+        '--onefile',         # High performance single file mode
         '--windowed',        # No console
         '--noconfirm',       # Overwrite output
         '--clean',           # Clean cache

@@ -15,11 +15,11 @@
 - **🎵 音视频解析 (Media Engine)**：
   自动化音频/视频封装抽取，甚至支持特定加密格式的自动解密流水线。
 - **📦 极致分发体系**：
-  摒弃传统 Onefile 解压惩罚，采用 PyInstaller Onedir 配合 Inno Setup 固实压缩 (LZMA2) 方案，提供完美的桌面快捷方式及系统集成安装向导。
+  采用终极优化的 PyInstaller 高性能单文件 (Onefile) 模式，免安装，双击即用，提供完美的桌面快捷方式及系统集成安装向导。
 
 ## 🚀 下载与安装
 
-请前往右侧的 **[Releases](../../releases)** 专栏，下载最新版本的 `MikaRoll_v2.0_Setup.exe` 安装包。
+请前往右侧的 **[Releases](../../releases)** 专栏，下载最新版本的 `MikaRoll.exe` 安装包。
 - 采用绿色单文件安装器，双击即可无脑安装。
 - 安装完毕后，桌面会自动生成 `MikaRoll` 快捷方式。
 
@@ -36,7 +36,7 @@
    ```bash
    python main.py
    ```
-3. **一键构建极速单目录版 (Onedir)**：
+3. **一键构建极速便携单文件版 (Onefile)**：
    我们提供了全自动化的构建脚本 `build.py`，它会自动嗅探 Conda 环境的 Tcl/Tk DLL，禁用 UPX，并开启字节码极致优化。
    ```bash
    python build.py

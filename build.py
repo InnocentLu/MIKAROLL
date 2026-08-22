@@ -12,17 +12,12 @@ def build():
     
     tcl_dll = "tcl86t.dll"
     tk_dll = "tk86t.dll"
-    tcl_data = "tcl8.6"
-    tk_data = "tk8.6"
     
     extra_binaries = []
     
     if not os.path.exists(os.path.join(bin_dir, tcl_dll)):
         tcl_dll = "tcl90.dll"
         tk_dll = "tcl9tk90.dll"
-        tcl_data = "tcl9.0"
-        tk_data = "tk9.0"
-        
         tommath = os.path.join(bin_dir, "libtommath.dll")
         if os.path.exists(tommath):
             extra_binaries.append(f'--add-binary={tommath};.')
@@ -50,11 +45,8 @@ def build():
         '--hidden-import=playwright',
         '--hidden-import=comtypes',
         '--hidden-import=reportlab',
-        # Tcl/Tk data
-        f'--add-data={os.path.join(conda_base, "Library", "lib", tcl_data)};tcl/{tcl_data}',
-        f'--add-data={os.path.join(conda_base, "Library", "lib", tk_data)};tcl/{tk_data}',
         '--add-data=image;image',
-        # Tcl/Tk binaries
+        # Tcl/Tk binaries (PyInstaller hook-_tkinter.py handles the tcl/tk folders automatically)
         f'--add-binary={tcl_dll_path};.',
         f'--add-binary={tk_dll_path};.',
         # Disable UPX and use optimize=2

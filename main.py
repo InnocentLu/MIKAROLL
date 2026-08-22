@@ -1,18 +1,37 @@
 import os
+import sys
+import ctypes
+
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    pass
+
+
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包环境
+    base_path = sys._MEIPASS
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(base_path, "ms-playwright")
+
 import re
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
-from PIL import Image, ImageSequence
 
-import sys
+def get_sys_font(size, weight="normal"):
+    import platform
+    if platform.system() == "Darwin":
+        return ctk.CTkFont(family="PingFang SC", size=size, weight=weight)
+    else:
+        return ctk.CTkFont(family="Microsoft YaHei", size=size, weight=weight)
+
 
 def get_resource_path(relative_path):
-    """ 获取资源的绝对路径，兼容开发环境与 PyInstaller 打包环境 """
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, relative_path)
 
 import json
 
@@ -39,24 +58,36 @@ def save_config(key, value):
     except Exception as e:
         print(f"Failed to save config: {e}")
 
+
+# --- TKDND LIBRARY INJECTION ---
 try:
-    from tkinterdnd2 import DND_FILES, TkinterDnD
+    import platform
+    if platform.system() == "Windows" and getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+        tkdnd_path = os.path.join(base_path, 'tkinterdnd2', 'tkdnd')
+        if os.path.exists(tkdnd_path):
+            os.environ["TKDND_LIBRARY"] = tkdnd_path
+except Exception:
+    pass
+
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
     HAS_DND = True
 except ImportError:
     HAS_DND = False
-    class TkinterDnD:
-        class Tk(tk.Tk): pass
 
-from engines.image_engine import convert_image
-from engines.audio_engine import convert_audio_video
-from engines.doc_engine import convert_document
 from utils.helpers import get_unique_filename
 
 CONVERSION_MAP = {
-    '.pptx': ['.pdf', '.docx', '.png', '.jpg'],
-    '.ppt': ['.pdf', '.docx', '.png', '.jpg'],
-    '.docx': ['.pdf', '.md', '.txt'],
-    '.doc': ['.pdf', '.md', '.txt'],
+    '.pptx': ['.pdf', '.key', '.docx', '.png', '.jpg'],
+    '.ppt': ['.pdf', '.key', '.docx', '.png', '.jpg'],
+    '.key': ['.pdf', '.pptx', '.png', '.jpg'],
+    '.docx': ['.pdf', '.pages', '.md', '.txt'],
+    '.doc': ['.pdf', '.pages', '.md', '.txt'],
+    '.pages': ['.pdf', '.docx', '.txt'],
+    '.xlsx': ['.pdf', '.numbers', '.csv'],
+    '.xls': ['.pdf', '.numbers', '.csv'],
+    '.numbers': ['.pdf', '.xlsx', '.csv'],
     '.pdf': ['.docx', '.png', '.jpg', '.txt'],
     '.md': ['.pdf', '.docx', '.html', '.txt'],
     '.markdown': ['.pdf', '.docx', '.html', '.txt'],
@@ -95,41 +126,32 @@ CONVERSION_MAP = {
 }
 
 THEMES = {
-    "浅紫": {
-        "mode": "light",
-        "bg": "#F3F0FF",
-        "frame_bg": "#E8E1FF",
-        "btn_primary": "#9B82F3",
-        "text": "#3D2B8E"
-    },
-    "少女粉": {
-        "mode": "light",
-        "bg": "#FFF0F5",
-        "frame_bg": "#FFE4E1",
-        "btn_primary": "#FF9FB3",
-        "text": "#4A4A4A"
-    },
-    "浅绿": {
-        "mode": "light",
-        "bg": "#F0FFF0",
-        "frame_bg": "#E8F5E9",
-        "btn_primary": "#81C784",
-        "text": "#2E7D32"
-    },
-    "淡蓝": {
-        "mode": "light",
-        "bg": "#F0F8FF",
-        "frame_bg": "#E3F2FD",
-        "btn_primary": "#64B5F6",
-        "text": "#1565C0"
-    }
+    "浅紫": {"mode": "light", "bg": "#F3F0FF", "frame_bg": "#E8E1FF", "btn_primary": "#9B82F3", "text": "#3D2B8E"},
+    "少女粉": {"mode": "light", "bg": "#FFF0F5", "frame_bg": "#FFE4E1", "btn_primary": "#FF9FB3", "text": "#4A4A4A"},
+    "浅绿": {"mode": "light", "bg": "#F0FFF0", "frame_bg": "#E8F5E9", "btn_primary": "#81C784", "text": "#2E7D32"},
+    "淡蓝": {"mode": "light", "bg": "#F0F8FF", "frame_bg": "#E3F2FD", "btn_primary": "#64B5F6", "text": "#1565C0"}
 }
 
 if HAS_DND:
-    class CTk_DnD(ctk.CTk, TkinterDnD.DnDWrapper):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.TkdndVersion = TkinterDnD._require(self)
+    try:
+        if hasattr(TkinterDnD, 'DnDWrapper'):
+            _DnDBase = TkinterDnD.DnDWrapper
+        else:
+            import tkinterdnd2 as _tkdnd2
+            _DnDBase = getattr(_tkdnd2, 'DnDWrapper', TkinterDnD)
+
+        class CTk_DnD(ctk.CTk, _DnDBase):
+            def __init__(self, *args, **kwargs):
+                print('[Debug] CTk_DnD __init__ START')
+                super().__init__(*args, **kwargs)
+                try:
+                    self.TkdndVersion = TkinterDnD._require(self)
+                except Exception:
+                    pass
+                print('[Debug] CTk_DnD __init__ END')
+    except Exception as _dnd_err:
+        class CTk_DnD(ctk.CTk):
+            pass
 else:
     class CTk_DnD(ctk.CTk):
         pass
@@ -200,6 +222,7 @@ class AnimationManager:
     集中管理 Tkinter after() 定时动画，避免多处 after_cancel 遗漏导致的内存泄漏。
     """
     def __init__(self, root):
+        self._after_ids = {}
         self.root = root
         self._tasks = {}          # name -> after_id
         self._bindings = {}       # widget -> (enter_id, leave_id)
@@ -277,21 +300,22 @@ class AnimationManager:
 
     # ── 2. 按钮呼吸光晕 ──────────────────────────────────
     def start_pulse(self, widget, color1: str, color2: str, period_ms=1200):
-        """让按钮颜色在 color1 ↔ color2 间缓慢呼吸"""
         self.cancel('pulse')
         import math
-        start_time = [0]
         import time
-        start_time[0] = time.time()
+        start_time = [time.time()]
 
         def _pulse():
-            elapsed = time.time() - start_time[0]
-            t = (math.sin(elapsed * 2 * math.pi / (period_ms / 1000)) + 1) / 2
             try:
+                # SAFE GUARD
+                if not widget.winfo_exists():
+                    return
+                elapsed = time.time() - start_time[0]
+                t = (math.sin(elapsed * 2 * math.pi / (period_ms / 1000)) + 1) / 2
                 widget.configure(fg_color=_lerp_color(color1, color2, t))
+                self.schedule('pulse', 30, _pulse)
             except Exception:
                 return
-            self.schedule('pulse', 30, _pulse)
 
         _pulse()
 
@@ -382,11 +406,17 @@ class MascotManager:
         self.frame_idx = 0
         self.timer_id = None
         
-        self.label = ctk.CTkLabel(self.parent, text="看板娘图片缺失\n(请在image文件夹放start/doing/down)", font=ctk.CTkFont(size=14))
+        self.label = ctk.CTkLabel(self.parent, text="看板娘图片缺失\n(请在image文件夹放start/doing/down)", font=get_sys_font(14))
         self.label.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
+        # Progressive UI Hydration: Load heavy assets when idle
+        self.parent.after_idle(self._hydrate_heavy_assets)
+
+    def _hydrate_heavy_assets(self):
+        print("[Debug] _hydrate_heavy_assets START")
         self._load_images()
         self.show_start()
+        print("[Debug] _hydrate_heavy_assets END")
         
     def _get_proportional_size(self, img_size):
         orig_w, orig_h = img_size
@@ -396,6 +426,7 @@ class MascotManager:
 
     def _load_images(self):
         try:
+            from PIL import Image, ImageSequence
             start_png = get_resource_path("image/start.png")
             start_jpg = get_resource_path("image/start.jpg")
             if os.path.exists(start_png):
@@ -464,10 +495,28 @@ class MascotManager:
 #  主应用
 # ─────────────────────────────────────────────
 class UniversalConverterApp:
+
+    def schedule(self, task_name, delay_ms, func, *args):
+        self.cancel(task_name)
+        self._after_ids[task_name] = self.root.after(delay_ms, func, *args)
+        
+    def cancel(self, task_name):
+        if task_name in self._after_ids:
+            try:
+                self.root.after_cancel(self._after_ids[task_name])
+            except Exception:
+                pass
+            del self._after_ids[task_name]
+            
+    def cancel_all(self):
+        for t in list(self._after_ids.keys()):
+            self.cancel(t)
+
     def __init__(self, root):
+        self._after_ids = {}
         self.root = root
         self.root.title("MikaRoll - Universal Converter")
-        self.root.geometry("980x680")
+        self.root.geometry("980x680+100+100")
         self.root.minsize(850, 600)
         
         ctk.set_default_color_theme("blue")
@@ -484,7 +533,7 @@ class UniversalConverterApp:
         top_frame = ctk.CTkFrame(self.root, fg_color="transparent")
         top_frame.pack(fill=tk.X, padx=25, pady=(15, 0))
         
-        title_lbl = ctk.CTkLabel(top_frame, text="MikaRoll", font=ctk.CTkFont(size=22, weight="bold"))
+        title_lbl = ctk.CTkLabel(top_frame, text="MikaRoll", font=get_sys_font(22, weight="bold"))
         title_lbl.pack(side=tk.LEFT)
         self.labels.append(title_lbl)
         
@@ -495,12 +544,12 @@ class UniversalConverterApp:
             width=130,
             height=34,
             corner_radius=10,
-            font=ctk.CTkFont(family="Microsoft YaHei", size=13),
-            dropdown_font=ctk.CTkFont(family="Microsoft YaHei", size=13),
+            font=get_sys_font(13),
+            dropdown_font=get_sys_font(13),
         )
         self.theme_combo.pack(side=tk.RIGHT)
         
-        theme_lbl = ctk.CTkLabel(top_frame, text="视觉主题: ", font=ctk.CTkFont(weight="bold"))
+        theme_lbl = ctk.CTkLabel(top_frame, text="视觉主题: ", font=get_sys_font(13, weight="bold"))
         theme_lbl.pack(side=tk.RIGHT, padx=(0, 10))
         self.labels.append(theme_lbl)
 
@@ -513,10 +562,10 @@ class UniversalConverterApp:
 
         # ── Step 1: 导入文件 ──
         self.drop_area = ctk.CTkFrame(left_pane, corner_radius=15)
-        self.drop_area.pack(fill=tk.X, pady=(0, 15))
+        self.drop_area.pack(fill=tk.X, pady=10)
         self.card_frames.append(self.drop_area)
 
-        lbl1 = ctk.CTkLabel(self.drop_area, text="第一步: 导入文件 (支持拖拽)", font=ctk.CTkFont(weight="bold"))
+        lbl1 = ctk.CTkLabel(self.drop_area, text="第一步: 导入文件 (支持拖拽)", font=get_sys_font(13, weight="bold"))
         lbl1.pack(anchor=tk.W, padx=15, pady=(15, 5))
         self.labels.append(lbl1)
 
@@ -544,10 +593,10 @@ class UniversalConverterApp:
 
         # ── Step 2: 目标格式 ──
         format_frame = ctk.CTkFrame(left_pane, corner_radius=15)
-        format_frame.pack(fill=tk.X, pady=(0, 15))
+        format_frame.pack(fill=tk.X, pady=10)
         self.card_frames.append(format_frame)
 
-        lbl2 = ctk.CTkLabel(format_frame, text="第二步: 选择目标格式", font=ctk.CTkFont(weight="bold"))
+        lbl2 = ctk.CTkLabel(format_frame, text="第二步: 选择目标格式", font=get_sys_font(13, weight="bold"))
         lbl2.pack(anchor=tk.W, padx=15, pady=(15, 5))
         self.labels.append(lbl2)
 
@@ -564,17 +613,17 @@ class UniversalConverterApp:
             values=["请先选择源文件"],
             width=150, height=35,
             corner_radius=10,
-            font=ctk.CTkFont(family="Microsoft YaHei", size=13),
-            dropdown_font=ctk.CTkFont(family="Microsoft YaHei", size=13),
+            font=get_sys_font(13),
+            dropdown_font=get_sys_font(13),
         )
         self.format_combo.pack(side=tk.LEFT)
 
         # ── Step 3: 输出设置 ──
         dir_frame = ctk.CTkFrame(left_pane, corner_radius=15)
-        dir_frame.pack(fill=tk.X, pady=(0, 15))
+        dir_frame.pack(fill=tk.X, pady=10)
         self.card_frames.append(dir_frame)
 
-        lbl3 = ctk.CTkLabel(dir_frame, text="第三步: 输出设置", font=ctk.CTkFont(weight="bold"))
+        lbl3 = ctk.CTkLabel(dir_frame, text="第三步: 输出设置", font=get_sys_font(13, weight="bold"))
         lbl3.pack(anchor=tk.W, padx=15, pady=(15, 5))
         self.labels.append(lbl3)
 
@@ -596,16 +645,24 @@ class UniversalConverterApp:
         self.browse_out_btn.pack(side=tk.RIGHT)
         self.secondary_buttons.append(self.browse_out_btn)
 
+        # 添加页码复选框
+        # TOC Checkbox Row
+        toc_row = ctk.CTkFrame(dir_frame, fg_color="transparent")
+        toc_row.pack(fill=tk.X, padx=15, pady=(10, 6))
+        self.format_enhance_var = tk.BooleanVar(value=False)
+        self.format_enhance_cb = ctk.CTkCheckBox(toc_row, text="添加目录与底部页码", variable=self.format_enhance_var)
+        self.format_enhance_cb.pack(side=tk.LEFT)
+
         self.filename_mode_var = tk.StringVar(value="keep")
         self.keep_rb = ctk.CTkRadioButton(
             dir_frame, text="保持原文件名",
             variable=self.filename_mode_var, value="keep",
             command=self.on_filename_mode_change
         )
-        self.keep_rb.pack(anchor=tk.W, padx=15, pady=(0, 10))
+        self.keep_rb.pack(anchor=tk.W, padx=15, pady=(6, 6))
 
         row4 = ctk.CTkFrame(dir_frame, fg_color="transparent")
-        row4.pack(fill=tk.X, padx=15, pady=(0, 15))
+        row4.pack(fill=tk.X, padx=15, pady=(6, 6))
 
         self.custom_rb = ctk.CTkRadioButton(
             row4, text="自定义文件名",
@@ -634,7 +691,7 @@ class UniversalConverterApp:
         mascot_frame = ctk.CTkFrame(right_pane, fg_color="transparent")
         mascot_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-        self.mascot_mgr = MascotManager(mascot_frame, size=(340, 420))
+        print("[Debug] MascotManager init START"); self.mascot_mgr = MascotManager(mascot_frame, size=(340, 420)); print("[Debug] MascotManager init END")
 
         bottom_right = ctk.CTkFrame(right_pane, fg_color="transparent")
         bottom_right.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=20)
@@ -642,7 +699,7 @@ class UniversalConverterApp:
         self.status_var = tk.StringVar(value="就绪：等待导入文件")
         self.status_label = ctk.CTkLabel(
             bottom_right, textvariable=self.status_var,
-            font=ctk.CTkFont(size=13, weight="bold"),
+            font=get_sys_font(13, weight="bold"),
             wraplength=350, justify="left"
         )
         self.status_label.pack(fill=tk.X, pady=(0, 10))
@@ -652,15 +709,28 @@ class UniversalConverterApp:
         self.progress_bar.set(0)
         self.progress_bar.pack(fill=tk.X, pady=(0, 15))
 
+        btn_frame = ctk.CTkFrame(bottom_right, fg_color="transparent")
+        btn_frame.pack(fill=tk.X)
+
         self.convert_btn = ctk.CTkButton(
-            bottom_right, text="开 始 转 换",
-            font=ctk.CTkFont(weight="bold", size=18),
+            btn_frame, text="开 始 转 换",
+            font=get_sys_font(18, weight="bold"),
             command=self.start_conversion, height=55
         )
-        self.convert_btn.pack(fill=tk.X)
+        self.convert_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.primary_buttons.append(self.convert_btn)
 
+        self.stop_btn = ctk.CTkButton(
+            btn_frame, text="停 止 转 换",
+            font=get_sys_font(16, weight="bold"),
+            command=self.request_stop, height=55, width=120,
+            fg_color="#cccccc", text_color="#666666", hover_color="#bbbbbb", state="disabled"
+        )
+        self.stop_btn.pack(side=tk.RIGHT)
+
+        self.stop_requested = threading.Event()
         self._is_breathing = False
+        self.cancel('pulse')
 
         # ── 应用初始主题 ──
         saved_theme = load_config().get("theme", "淡蓝")
@@ -668,7 +738,87 @@ class UniversalConverterApp:
             saved_theme = "淡蓝"
         self.theme_combo.set(saved_theme)
         self._current_theme = saved_theme
-        self.on_theme_change(saved_theme, animate=False)
+        self.root.after(400, lambda: self.on_theme_change(saved_theme, animate=False))
+        self.root.after(300, self._bind_dnd_safe)
+
+        # ── 首次启动彩蛋 ──
+        pass
+
+        self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after_idle(self.root.attributes, "-topmost", False)
+        self.root.focus_force()
+
+    def _safe_check_first_run(self):
+        try:
+            self._check_first_run()
+        except Exception as e:
+            print(f"[first_run] non-fatal error: {e}")
+
+    def _check_first_run(self):
+        """检测是否为首次启动，弹出 Mika 主题欢迎弹窗"""
+        cfg = load_config()
+        if cfg.get("first_run_done"):
+            return
+
+        # ── 构建弹窗 ──
+        overlay = ctk.CTkFrame(self.root, fg_color="#2b2b2b")
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        popup = ctk.CTkFrame(overlay, width=420, height=340, corner_radius=20, fg_color="#FFF0F5", border_width=2, border_color="#FFB6C1")
+        popup.place(relx=0.5, rely=0.5, anchor="center")
+
+        # 尝试加载 icon 图片
+        try:
+            from PIL import Image
+            icon_img = Image.open(get_resource_path("image/icon.jpg"))
+            icon_img = icon_img.resize((80, 80), Image.LANCZOS)
+            icon_ctk = ctk.CTkImage(light_image=icon_img, dark_image=icon_img, size=(80, 80))
+            icon_label = ctk.CTkLabel(popup, image=icon_ctk, text="")
+            icon_label.pack(pady=(25, 10))
+        except Exception:
+            pass
+
+        # 标题
+        title = ctk.CTkLabel(
+            popup, text="✨ MikaRoll ✨",
+            font=get_sys_font(22, weight="bold"),
+            text_color="#D4547A"
+        )
+        title.pack(pady=(5, 8))
+
+        # 彩蛋台词
+        msg = ctk.CTkLabel(
+            popup,
+            text="感谢 sensei 把 Mika 带回家！",
+            font=get_sys_font(16),
+            text_color="#8B4567",
+            wraplength=350
+        )
+        msg.pack(pady=(0, 5))
+
+        subtitle = ctk.CTkLabel(
+            popup,
+            text="愿每一次转换，都如魔法般顺滑 ♡",
+            font=get_sys_font(13),
+            text_color="#C48BA0"
+        )
+        subtitle.pack(pady=(0, 20))
+
+        def _dismiss():
+            save_config("first_run_done", True)
+            overlay.destroy()
+
+        ok_btn = ctk.CTkButton(
+            popup, text="Mika，出发！",
+            fg_color="#FF9FB3", hover_color="#FF7A95",
+            text_color="white",
+            font=get_sys_font(15, weight="bold"),
+            corner_radius=12, height=40, width=180,
+            command=_dismiss
+        )
+        ok_btn.pack(pady=(0, 20))
 
     # ─────────────────────────────────────────────
     #  主题应用
@@ -734,7 +884,7 @@ class UniversalConverterApp:
 
         if not self._is_breathing:
             glow_color = _adjust_color(btn_primary, 30)
-            self.anim.start_pulse(self.convert_btn, btn_primary, glow_color, period_ms=2000)
+            pass
 
     def _bind_card_hover(self, frame_bg):
         """为左侧卡片绑定悬停浮起效果。
@@ -765,8 +915,8 @@ class UniversalConverterApp:
     # ─────────────────────────────────────────────
     #  UI 状态切换
     # ─────────────────────────────────────────────
-    def toggle_ui_state(self, disabled=False):
-        state = 'disabled' if disabled else 'normal'
+    def _set_ui_state(self, is_converting: bool):
+        state = 'disabled' if is_converting else 'normal'
         self.input_entry.configure(state=state)
         self.browse_input_btn.configure(state=state)
         self.format_combo.configure(state=state)
@@ -774,15 +924,38 @@ class UniversalConverterApp:
         self.browse_out_btn.configure(state=state)
         self.keep_rb.configure(state=state)
         self.custom_rb.configure(state=state)
+        self.format_enhance_cb.configure(state=state)
         self.convert_btn.configure(state=state)
 
-        if disabled:
+        if is_converting:
             self.custom_filename_entry.configure(state='disabled')
+            # 激活“停止”按钮
+            c = THEMES[self._current_theme]
+            self.stop_btn.configure(
+                state="normal",
+                fg_color="#FF4C4C", hover_color="#D83A3A", text_color="white"
+            )
         else:
             if self.filename_mode_var.get() == "custom":
                 self.custom_filename_entry.configure(state='normal')
             else:
                 self.custom_filename_entry.configure(state='disabled')
+            # 禁用“停止”按钮
+            self.stop_btn.configure(
+                state="disabled",
+                text="停 止 转 换",
+                fg_color="#cccccc", hover_color="#bbbbbb", text_color="#666666"
+            )
+
+    def toggle_ui_state(self, disabled=False):
+        # 兼容旧代码调用
+        self._set_ui_state(disabled)
+
+    def request_stop(self):
+        if not self.stop_requested.is_set():
+            self.stop_requested.set()
+            self.anim.typewriter(self.status_var, "正在停止并清理资源，请稍候...", delay_ms=20)
+            self.stop_btn.configure(state="disabled", text="停 止 中 ...", fg_color="#cccccc")
 
     # ─────────────────────────────────────────────
     #  文件处理
@@ -791,6 +964,14 @@ class UniversalConverterApp:
         filenames = filedialog.askopenfilenames(title="选择要转换的文件")
         if filenames:
             self.handle_input_files(list(filenames))
+
+    def _bind_dnd_safe(self):
+        try:
+            if HAS_DND and hasattr(self.root, 'drop_target_register'):
+                self.root.drop_target_register(DND_FILES)
+                self.root.dnd_bind('<<Drop>>', self.on_drop)
+        except Exception as e:
+            print(f"[Warn] DnD binding failed: {e}")
 
     def on_drop(self, event):
         files = self.root.tk.splitlist(event.data)
@@ -875,6 +1056,13 @@ class UniversalConverterApp:
             self.output_path_var.set(os.path.dirname(filepath))
 
         name, _ = os.path.splitext(clean_name)
+        toc_supported_exts = ['.md', '.txt', '.doc', '.docx', '.pages']
+        if ext in toc_supported_exts:
+            self.format_enhance_cb.configure(state="normal")
+        else:
+            self.format_enhance_var.set(False)
+            self.format_enhance_cb.configure(state="disabled")
+
         if is_batch:
             self.filename_mode_var.set("keep")
             self.custom_rb.configure(state='disabled')
@@ -891,33 +1079,78 @@ class UniversalConverterApp:
     # ─────────────────────────────────────────────
     #  旧版呼吸灯（转换中状态标签用）
     # ─────────────────────────────────────────────
-    def start_breathing(self):
-        self._is_breathing = True
-        # 停止按钮呼吸
-        self.anim.cancel('pulse')
-        self._breath_state = 0
-        self._breath_loop()
+    def _pulse(self):
+        if not self.root.winfo_exists() or not self._is_breathing:
+            return
+        import time
+        import math
+        elapsed = time.time() - self._breath_start_time
+        t = (math.sin(elapsed * 2 * math.pi / 2.0) + 1) / 2
+        
+        cfg = THEMES[self._current_theme]
+        base_color = cfg['btn_primary']
+        glow_color = _adjust_color(base_color, 40)
+        
+        current_color = _lerp_color(base_color, glow_color, t)
+        
+        try:
+            self.status_label.configure(text_color=current_color)
+            self.convert_btn.configure(fg_color=current_color)
+        except Exception:
+            pass
+            
+        self.schedule('pulse', 30, self._pulse)
 
-    def _breath_loop(self):
+    def _pulse(self):
+        if not getattr(self.root, 'winfo_exists', lambda: False)():
+            return
         if not self._is_breathing:
             return
-        theme = self._current_theme
-        if theme == "午夜黑":
-            c1, c2 = "#1f538d", "gray90"
-        else:
-            c1, c2 = THEMES[theme]["btn_primary"], THEMES[theme]["text"]
+        import time
+        import math
+        elapsed = time.time() - self._breath_start_time
+        # sin wave between 0 and 1
+        t = (math.sin(elapsed * 2 * math.pi / 2.0) + 1) / 2
+        
+        cfg = THEMES.get(self._current_theme, list(THEMES.values())[0])
+        base_color = cfg['btn_primary']
+        
+        # calculate rgb lerp manually for pulse
+        def hex_to_rgb(hx):
+            hx = hx.lstrip('#')
+            return tuple(int(hx[i:i+2], 16) for i in (0, 2, 4))
+            
+        def rgb_to_hex(rgb):
+            return '#{:02x}{:02x}{:02x}'.format(int(rgb[0]), int(rgb[1]), int(rgb[2]))
+            
+        try:
+            r1, g1, b1 = hex_to_rgb(base_color)
+            r2, g2, b2 = min(255, r1+50), min(255, g1+50), min(255, b1+50) # glow color
+            r = r1 + (r2 - r1) * t
+            g = g1 + (g2 - g1) * t
+            b = b1 + (b2 - b1) * t
+            current_color = rgb_to_hex((r, g, b))
+        except:
+            current_color = base_color
+            
+        try:
+            self.status_label.configure(text_color=current_color)
+            self.convert_btn.configure(fg_color=current_color)
+        except Exception:
+            pass
+            
+        self.schedule('pulse', 30, self._pulse)
 
-        if self._breath_state == 0:
-            self.status_label.configure(text_color=c1)
-            self._breath_state = 1
-        else:
-            self.status_label.configure(text_color=c2)
-            self._breath_state = 0
-
-        self._breathe_id = self.root.after(800, self._breath_loop)
+    def start_breathing(self):
+        self._is_breathing = True
+        self.cancel('pulse')
+        import time
+        self._breath_start_time = time.time()
+        self._pulse()
 
     def stop_breathing(self):
         self._is_breathing = False
+        self.cancel('pulse')
         if hasattr(self, '_breathe_id'):
             self.root.after_cancel(self._breathe_id)
 
@@ -926,8 +1159,7 @@ class UniversalConverterApp:
         self.status_label.configure(text_color=cfg['text'])
 
         btn_primary = cfg['btn_primary']
-        glow_color  = _adjust_color(btn_primary, 30)
-        self.anim.start_pulse(self.convert_btn, btn_primary, glow_color, period_ms=2000)
+        self.convert_btn.configure(fg_color=btn_primary)
 
     # ─────────────────────────────────────────────
     #  转换流程
@@ -955,6 +1187,7 @@ class UniversalConverterApp:
             self.status_label.configure(text_color="#E57373")
             return
 
+        self.stop_requested.clear()
         self.toggle_ui_state(disabled=True)
         self.open_folder_btn.pack_forget()
         self.convert_btn.configure(text="转 换 中 ...")
@@ -974,18 +1207,20 @@ class UniversalConverterApp:
         custom_name = self.custom_filename_var.get().strip()
         use_custom = (self.filename_mode_var.get() == "custom" and custom_name)
 
+        format_enhance_val = self.format_enhance_var.get()
         thread = threading.Thread(
             target=self._process_conversion_thread,
-            args=(self.current_input_files, output_dir, target_ext, custom_name, use_custom)
+            args=(self.current_input_files, output_dir, target_ext, custom_name, use_custom, format_enhance_val)
         )
         thread.daemon = True
         thread.start()
 
-    def _process_conversion_thread(self, input_files, output_dir, target_ext, custom_name, use_custom):
+    def _process_conversion_thread(self, input_files, output_dir, target_ext, custom_name, use_custom, format_enhance=False):
         success_count = 0
         total = len(input_files)
         errors = []
         last_output = None
+        was_stopped = False
 
         if total > 1:
             use_custom = False
@@ -996,52 +1231,83 @@ class UniversalConverterApp:
                             '.qmcflac', '.qmcogg', '.qmc0', '.qmc2', '.qmc3', '.qmc4', '.qmc6', '.qmc8']
         doc_exts = ['.pptx', '.ppt', '.docx', '.doc', '.pdf', '.md', '.markdown']
 
-        for idx, input_file in enumerate(input_files):
-            if total > 1:
-                pct = idx / total
-                self.root.after(0, self.update_batch_progress, f"正在转换 ({idx+1}/{total}) - {int(pct*100)}%", pct)
+        try:
+            for idx, input_file in enumerate(input_files):
+                if self.stop_requested.is_set():
+                    was_stopped = True
+                    break
 
-            _, filename = os.path.split(input_file)
-            clean_name = re.sub(r'@[^.]+', '', filename)
-            orig_name, _ = os.path.splitext(clean_name)
-            _, in_ext = os.path.splitext(clean_name)
-            in_ext = in_ext.lower()
+                if total > 1:
+                    pct = idx / total
+                    self.root.after(0, self.update_batch_progress, f"正在转换 ({idx+1}/{total}) - {int(pct*100)}%", pct)
 
-            name_to_use = custom_name if use_custom else orig_name
-            expected_output = os.path.join(output_dir, f"{name_to_use}{target_ext}")
-            final_output = get_unique_filename(expected_output)
+                _, filename = os.path.split(input_file)
+                clean_name = re.sub(r'@[^.]+', '', filename)
+                orig_name, _ = os.path.splitext(clean_name)
+                _, in_ext = os.path.splitext(clean_name)
+                in_ext = in_ext.lower()
 
-            if in_ext in image_exts:
-                success, error_msg = convert_image(input_file, final_output)
-            elif in_ext in audio_video_exts:
-                success, error_msg = convert_audio_video(input_file, final_output)
-            elif in_ext in doc_exts:
-                success, error_msg = convert_document(input_file, final_output)
-            else:
-                success = False
-                error_msg = "未找到对应的转换引擎。"
+                name_to_use = custom_name if use_custom else orig_name
+                expected_output = os.path.join(output_dir, f"{name_to_use}{target_ext}")
+                final_output = get_unique_filename(expected_output)
 
-            if success:
-                success_count += 1
-                last_output = final_output
-            else:
-                errors.append(f"{filename}: {error_msg}")
+                if in_ext in image_exts:
+                    from engines.image_engine import convert_image
+                    success, error_msg = convert_image(input_file, final_output)
+                elif in_ext in audio_video_exts:
+                    from engines.audio_engine import convert_audio_video
+                    success, error_msg = convert_audio_video(input_file, final_output)
+                elif in_ext in doc_exts:
+                    from engines.doc_engine import convert_document
+                    success, error_msg = convert_document(input_file, final_output, format_enhance=format_enhance, stop_event=self.stop_requested)
+                else:
+                    success = False
+                    error_msg = "未找到对应的转换引擎。"
 
-        if total > 1:
-            self.root.after(0, self.update_batch_progress, "转换收尾中...", 1.0)
-            import time
-            time.sleep(0.3)
+                if success:
+                    success_count += 1
+                    last_output = final_output
+                else:
+                    if self.stop_requested.is_set():
+                        # 清理生成了一半的文件
+                        if os.path.exists(final_output):
+                            try: os.remove(final_output)
+                            except: pass
+                        was_stopped = True
+                        break
+                    errors.append(f"{filename}: {error_msg}")
 
-        self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors)
+            if not was_stopped and total > 1:
+                self.root.after(0, self.update_batch_progress, "转换收尾中...", 1.0)
+                import time
+                time.sleep(0.3)
+
+            self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors, was_stopped)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: messagebox.showerror("严重错误", f"转换线程发生崩溃:\n{str(e)}"))
+            self.root.after(0, self._on_conversion_complete, success_count, total, last_output, errors, was_stopped)
+        finally:
+            self.root.after(0, self.toggle_ui_state, False)
 
     def update_batch_progress(self, msg, val):
         self.status_var.set(msg)
         self.progress_bar.set(val)
 
-    def _on_conversion_complete(self, success_count, total, last_output, errors):
+    def _on_conversion_complete(self, success_count, total, last_output, errors, was_stopped=False):
         self.stop_breathing()
         self.toggle_ui_state(disabled=False)
         self.convert_btn.configure(text="再 次 转 换")
+
+        if was_stopped:
+            self.mascot_mgr.show_start()
+            self.anim.typewriter(self.status_var, f"转换已手动取消。完成 {success_count}/{total}", delay_ms=18)
+            self.status_label.configure(text_color="#FFB74D")
+            self.progress_bar.stop()
+            self.progress_bar.configure(mode='determinate')
+            self.progress_bar.set(success_count / total if total > 0 else 0)
+            return
 
         if success_count > 0:
             self.mascot_mgr.show_down()
@@ -1062,7 +1328,12 @@ class UniversalConverterApp:
                 error_details = "\n".join(errors)
                 messagebox.showwarning("部分文件转换失败", f"部分文件转换失败，以下是详细错误日志：\n\n{error_details}")
             else:
-                self.anim.typewriter(self.status_var, "mika已经全部吃完啦！", delay_ms=35)
+                if sys.platform == 'darwin' and last_output and last_output.lower().endswith('.pdf'):
+                    self.anim.typewriter(self.status_var, "mika已经全部吃完啦！正在打开预览...", delay_ms=35)
+                    import subprocess
+                    subprocess.Popen(["open", last_output])
+                else:
+                    self.anim.typewriter(self.status_var, "mika已经全部吃完啦！", delay_ms=35)
                 self.status_label.configure(text_color="#81C784" if self._current_theme != "午夜黑" else "#66BB6A")
             self.open_folder_btn.pack(side=tk.TOP, pady=10)
         else:
@@ -1090,20 +1361,131 @@ class UniversalConverterApp:
 #  入口
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
+    print("[Debug] 进入 main 块")
     import ctypes
     try:
-        myappid = 'mikaroll.converter.desktop.v1'
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('mikaroll.converter.desktop.v1')
     except Exception:
         pass
 
+    def check_auto_install(root_win):
+        import subprocess
+        import tkinter.messagebox as messagebox
+    
+        if sys.platform != "darwin":
+            return
+    
+        exe_path = sys.executable
+        if not exe_path.startswith("/Volumes/"):
+            return
+    
+        parts = exe_path.split("/")
+        if len(parts) >= 3:
+            volume_path = "/" + "/".join(parts[1:3])
+        else:
+            return
+    
+        if not messagebox.askyesno("MikaRoll 安装助手", "检测到您正在临时挂载卷中运行。\n\n是否一键安装至「应用程序」文件夹，并自动清理安装包？", parent=root_win):
+            return
+    
+        source_dmg = None
+        try:
+            import plistlib
+            out = subprocess.check_output(['hdiutil', 'info', '-plist'])
+            data = plistlib.loads(out)
+            for item in data.get('images', []):
+                image_path = item.get('image-path', '')
+                for entity in item.get('system-entities', []):
+                    if entity.get('mount-point') == volume_path:
+                        source_dmg = image_path
+                        break
+                if source_dmg:
+                    break
+        except Exception as e:
+            print(f"Failed to find source DMG: {e}")
+    
+        app_name = "MikaRoll.app"
+        source_app = os.path.join(volume_path, app_name)
+        target_app = os.path.join("/Applications", app_name)
+    
+        try:
+            subprocess.run(["ditto", source_app, target_app], check=True)
+        except Exception as e:
+            messagebox.showerror("安装失败", f"复制文件至应用程序文件夹失败:\n{e}", parent=root_win)
+            return
+    
+        subprocess.Popen(["open", target_app])
+    
+        script = f"""
+sleep 1.5
+hdiutil detach "{volume_path}" -force
+"""
+        if source_dmg and os.path.exists(source_dmg):
+            script += f"""osascript -e 'tell application "Finder" to delete POSIX file "{source_dmg}"'
+"""
+        subprocess.Popen(["sh", "-c", script], start_new_session=True)
+        sys.exit(0)
+    
+    
     root = CTk_DnD()
+    pass # root.withdraw() disabled by agent
+    
+    check_auto_install(root)
+    
+    root.deiconify()
 
     icon_path = get_resource_path("image/icon.ico")
-    try:
-        root.iconbitmap(icon_path)
-    except Exception as e:
-        print(f"Icon load error: {e}")
+    if sys.platform == "win32" and os.path.exists(icon_path):
+        try:
+            root.iconbitmap(icon_path)
+        except Exception as e:
+            print(f"Icon load error (non-fatal): {e}")
 
-    app = UniversalConverterApp(root)
-    root.mainloop()
+    print("[Debug] 准备实例化 UniversalConverterApp..."); app = UniversalConverterApp(root); print("[Debug] UniversalConverterApp 实例化完成")
+
+    def show_error(exc, val, tb):
+        import traceback
+        print("Tkinter callback exception:")
+        traceback.print_exception(exc, val, tb)
+        
+    root.report_callback_exception = show_error
+
+    
+    if sys.platform == "darwin":
+        def on_reopen(*args):
+            root.deiconify()
+            root.lift()
+            root.focus_force()
+
+        def on_close():
+            pass # root.withdraw() disabled by agent
+
+        root.createcommand("::tk::mac::ReopenApplication", on_reopen)
+        root.protocol("WM_DELETE_WINDOW", on_close)
+    else:
+        def on_close():
+            try:
+                app.anim.cancel_all()
+            except Exception:
+                pass
+            root.destroy()
+            sys.exit(0)
+        root.protocol("WM_DELETE_WINDOW", on_close)
+
+    try:
+        print("[Debug] 进入 root.mainloop()")
+        root.mainloop()
+    except KeyboardInterrupt:
+        pass
+    except Exception as _e:
+        import traceback
+        print("\n" + "=" * 60)
+        print("【MikaRoll 崩溃日志】完整错误堆栈：")
+        traceback.print_exc()
+        print("=" * 60 + "\n")
+        try:
+            import tkinter.messagebox as _mb
+            _mb.showerror("MikaRoll 崩溃", f"程序发生崩溃:\n\n{_e}")
+        except Exception:
+            pass
+        input("按回车键退出...")

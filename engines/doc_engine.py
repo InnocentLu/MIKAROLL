@@ -1,14 +1,49 @@
 import os
+import sys
+
+
+
+def embed_local_images(html_content, md_file_dir):
+    import re
+    import base64
+    import mimetypes
+    import urllib.parse
+    
+    def replace_src(match):
+        src = match.group(1).strip('"\'')
+        if src.startswith(('http://', 'https://', 'data:')):
+            return match.group(0)
+            
+        img_path = src if os.path.isabs(src) else os.path.normpath(os.path.join(md_file_dir, src))
+        img_path = urllib.parse.unquote(img_path)
+        
+        if os.path.exists(img_path):
+            mime_type, _ = mimetypes.guess_type(img_path)
+            mime_type = mime_type or 'image/png'
+            try:
+                with open(img_path, 'rb') as img_f:
+                    b64_data = base64.b64encode(img_f.read()).decode('utf-8')
+                    return f'src="data:{mime_type};base64,{b64_data}"'
+            except Exception as e:
+                print(f"[Warn] 内嵌图片失败 {img_path}: {e}")
+        return match.group(0)
+        
+    return re.sub(r'src=["\']([^"\']+)["\']', replace_src, html_content)
 
 def _get_md_html_wrapper(text):
     import markdown
+    import markdown.extensions.toc
+    import markdown.extensions.fenced_code
+    import markdown.extensions.tables
+    import markdown.extensions.codehilite
+    import markdown.extensions.md_in_html
     try:
         from pygments.formatters import HtmlFormatter
         has_pygments = True
     except ImportError:
         has_pygments = False
 
-    html_content = markdown.markdown(text, extensions=['fenced_code', 'tables', 'codehilite'])
+    html_content = markdown.markdown(text, extensions=['toc', 'fenced_code', 'tables', 'codehilite', 'md_in_html'])
     
     pygments_css = ""
     if has_pygments:
@@ -19,45 +54,302 @@ def _get_md_html_wrapper(text):
 <html>
 <head>
     <meta charset="UTF-8">
+    <script>
+        MathJax = {{
+          tex: {{
+            inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+            displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
+            processEscapes: true,
+            processEnvironments: true
+          }},
+          options: {{
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+          }}
+        }};
+    </script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <style>
-        body, h1, h2, h3, p, div, span, pre, code {{
-            font-family: "STSong-Light", "MSung-Light", sans-serif !important;
+        /* ── Global font & rendering ── */
+        * {{
+            box-sizing: border-box;
+        }}
+        body, pre, code, .markdown-body {{
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                         "Microsoft YaHei", "WenQuanYi Micro Hei", "SF Pro Text",
+                         Menlo, Monaco, Consolas, "Courier New", monospace !important;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
         }}
         body {{
-            line-height: 1.6;
-            margin: 40px;
+            line-height: 1.7;
+            margin: 0;
+            padding: 40px 50px;
+            color: #1f2328;
         }}
         {pygments_css}
-        pre {{
-            background: #f4f4f4;
-            padding: 10px;
-            border-radius: 5px;
-            overflow-x: auto;
+        pre, code {{
+            font-family: "Menlo", "Monaco", "Consolas", "PingFang SC", monospace !important;
+            white-space: pre-wrap;
         }}
-        code {{
-            font-family: Consolas, monospace;
+        pre {{
+            background: #f6f8fa;
+            padding: 14px 16px;
+            border-radius: 6px;
+            border: 1px solid #e1e4e8;
+            overflow-x: auto;
         }}
         table {{
             border-collapse: collapse;
             width: 100%;
+            margin: 1rem 0;
         }}
         th, td {{
-            border: 1px solid #ddd;
-            padding: 8px;
+            border: 1px solid #d0d7de;
+            padding: 8px 12px;
         }}
         th {{
-            background-color: #f2f2f2;
+            background-color: #f6f8fa;
+            font-weight: 600;
         }}
+        h1, h2, h3, h4, h5, h6 {{
+            color: #1f2328;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }}
+
+        /* ── TOC Container ── */
+        .toc-container {{
+            padding: 2.5rem 2rem;
+            background: #ffffff;
+            page-break-after: always;
+        }}
+        .toc-header {{
+            font-size: 22px;
+            font-weight: 700;
+            color: #111;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 2px solid #eaecef;
+            letter-spacing: 0.05em;
+        }}
+        .toc-item {{
+            display: flex;
+            align-items: baseline;
+            margin: 6px 0;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+            text-decoration: none;
+            color: inherit;
+        }}
+        .toc-level-1 {{
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 14px;
+            color: #1f2328;
+        }}
+        .toc-level-2 {{
+            font-size: 13.5px;
+            padding-left: 1.5rem;
+            color: #333;
+        }}
+        .toc-level-3 {{
+            font-size: 12.5px;
+            padding-left: 3rem;
+            color: #555;
+        }}
+        .toc-title {{
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            flex-shrink: 0;
+            max-width: 75%;
+        }}
+        .toc-dots {{
+            flex: 1;
+            border-bottom: 1.5px dotted #c5c9d0;
+            margin: 0 10px;
+            min-width: 20px;
+        }}
+        .toc-page {{
+            font-size: 13px;
+            color: #57606a;
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+            text-align: right;
+            min-width: 2em;
+        }}
+
+        /* Hide the raw toc div generated by python-markdown extension */
+        .toc {{ display: none; }}
     </style>
 </head>
 <body>
+    <!-- Professional TOC injected by JS -->
+    <div id="toc-root"></div>
+
 {html_content}
+
+<script>
+(function() {{
+    // A4 page height in px as laid out by Playwright's headless Chromium
+    // Playwright uses 96 dpi; A4 = 297mm => 297/25.4*96 ≈ 1122px
+    // With 2cm top margin the body content starts ~76px into page 1.
+    var PAGE_HEIGHT_PX = 1122;
+    var TOP_MARGIN_PX  = 76;  // Playwright margin top = 2cm ≈ 76px
+
+    var headings = Array.from(
+        document.querySelectorAll('h1, h2, h3')
+    ).filter(function(h) {{ return !h.closest('#toc-root'); }});
+
+    if (headings.length === 0) return;
+
+    var tocRoot = document.getElementById('toc-root');
+    var container = document.createElement('div');
+    container.className = 'toc-container';
+
+    var header = document.createElement('div');
+    header.className = 'toc-header';
+    header.textContent = '目  录';
+    container.appendChild(header);
+
+    headings.forEach(function(h) {{
+        var level = parseInt(h.tagName[1], 10);
+        if (level > 3) return;
+
+        // absoluteTop: distance from top of the full rendered document
+        var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+        var absoluteTop = h.getBoundingClientRect().top + scrollY;
+
+        // Page 1 is the TOC itself (page-break-after:always keeps it alone).
+        // Body content starts on page 2, which begins at PAGE_HEIGHT_PX in the layout.
+        var bodyPageOffset = absoluteTop - PAGE_HEIGHT_PX;
+        var pageNum = bodyPageOffset <= 0
+            ? 2
+            : Math.floor(bodyPageOffset / PAGE_HEIGHT_PX) + 2;
+
+        var item = document.createElement('div');
+        item.className = 'toc-item toc-level-' + level;
+
+        var title = document.createElement('span');
+        title.className = 'toc-title';
+        title.textContent = h.textContent.trim();
+
+        var dots = document.createElement('span');
+        dots.className = 'toc-dots';
+
+        var page = document.createElement('span');
+        page.className = 'toc-page';
+        page.textContent = pageNum;
+
+        item.appendChild(title);
+        item.appendChild(dots);
+        item.appendChild(page);
+        container.appendChild(item);
+    }});
+
+    tocRoot.appendChild(container);
+}})();
+</script>
 </body>
 </html>
 """
     return html_wrapper
 
-def convert_document(input_path, output_path):
+def _mac_convert_via_applescript(in_ext, out_ext, input_path, output_path):
+    import subprocess
+    import time
+    script = ""
+    app_name = ""
+    app_id = ""
+    
+    if in_ext in ['.ppt', '.pptx', '.key']:
+        app_name = "Keynote"
+        app_id = "com.apple.Keynote"
+        if out_ext == '.pdf':
+            action = f'export document 1 to POSIX file "{output_path}" as PDF'
+        elif out_ext == '.pptx':
+            action = f'export document 1 to POSIX file "{output_path}" as PowerPoint'
+        elif out_ext == '.key':
+            action = f'save document 1 in POSIX file "{output_path}"'
+        else:
+            action = f'export document 1 to POSIX file "{output_path}" as PDF'
+            
+        script = f"""
+        set isAppRunning to application id "{app_id}" is running
+        set inFile to POSIX file "{input_path}"
+        tell application id "{app_id}"
+            launch
+            if not isAppRunning then delay 1.5
+            open inFile
+            {action}
+            close document 1 saving no
+        end tell
+        """
+        
+    elif in_ext in ['.doc', '.docx', '.pages']:
+        app_name = "Pages"
+        app_id = "com.apple.iWork.Pages"
+        if out_ext == '.pdf':
+            action = "export myDoc to outFile as PDF"
+        elif out_ext == '.docx':
+            action = "export myDoc to outFile as Word"
+        elif out_ext == '.pages':
+            action = "save myDoc in outFile"
+        elif out_ext in ['.txt', '.md']:
+            action = "export myDoc to outFile as unformatted text"
+        else:
+            action = "export myDoc to outFile as PDF"
+            
+        script = f"""
+        set isAppRunning to application id "{app_id}" is running
+        set inFile to POSIX file "{input_path}"
+        set outFile to POSIX file "{output_path}"
+        tell application id "{app_id}"
+            launch
+            if not isAppRunning then delay 1.5
+            set myDoc to open inFile
+            {action}
+            close myDoc saving no
+        end tell
+        """
+        
+    elif in_ext in ['.xls', '.xlsx', '.numbers']:
+        app_name = "Numbers"
+        app_id = "com.apple.iWork.Numbers"
+        if out_ext == '.pdf':
+            action = "export myDoc to outFile as PDF"
+        elif out_ext in ['.xls', '.xlsx']:
+            action = "export myDoc to outFile as Excel"
+        elif out_ext == '.csv':
+            action = "export myDoc to outFile as CSV"
+        elif out_ext == '.numbers':
+            action = "save myDoc in outFile"
+        else:
+            action = "export myDoc to outFile as PDF"
+            
+        script = f"""
+        set isAppRunning to application id "{app_id}" is running
+        set inFile to POSIX file "{input_path}"
+        set outFile to POSIX file "{output_path}"
+        tell application id "{app_id}"
+            launch
+            if not isAppRunning then delay 1.5
+            set myDoc to open inFile
+            {action}
+            close myDoc saving no
+        end tell
+        """
+    else:
+        raise Exception(f"Unsupported format for Mac native conversion: {in_ext}")
+
+    res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if res.returncode != 0:
+        err = res.stderr.strip()
+        if "-609" in err or "-1743" in err:
+            raise Exception(f"{app_name} 自动化权限未开启或连接失败 ({err})。\\n请前往 macOS「系统设置 -> 隐私与安全性 -> 自动化」，允许当前终端/应用控制 {app_name}。")
+        raise Exception(f"{app_name} conversion failed. Error: {err}")
+
+def convert_document(input_path, output_path, format_enhance=False, stop_event=None):
     try:
         in_ext = os.path.splitext(input_path)[1].lower()
         out_ext = os.path.splitext(output_path)[1].lower()
@@ -65,48 +357,166 @@ def convert_document(input_path, output_path):
         input_path = os.path.abspath(input_path)
         output_path = os.path.abspath(output_path)
         
-        # 1. PPT/PPTX processing
-        if in_ext in ['.ppt', '.pptx']:
-            import comtypes.client
-            powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
-            try:
-                presentation = powerpoint.Presentations.Open(input_path, WithWindow=False)
-                if out_ext == '.pdf':
-                    presentation.SaveAs(output_path, 32) # ppSaveAsPDF
-                elif out_ext == '.png':
-                    presentation.SaveAs(output_path, 18) # ppSaveAsPNG
-                elif out_ext == '.jpg':
-                    presentation.SaveAs(output_path, 17) # ppSaveAsJPG
-                elif out_ext == '.docx':
-                    temp_pdf = input_path + ".temp.pdf"
-                    presentation.SaveAs(temp_pdf, 32)
-                    presentation.Close()
-                    presentation = None
-                    from pdf2docx import Converter
-                    cv = Converter(temp_pdf)
-                    cv.convert(output_path)
-                    cv.close()
-                    if os.path.exists(temp_pdf):
-                        os.remove(temp_pdf)
-            finally:
-                if 'presentation' in locals() and presentation is not None:
-                    presentation.Close()
-                powerpoint.Quit()
+        # 1. PPT/PPTX/Keynote processing
+        if in_ext in ['.ppt', '.pptx', '.key']:
+            if os.name == 'nt':
+                import comtypes.client
+                powerpoint = comtypes.client.CreateObject("Powerpoint.Application")
+                try:
+                    presentation = powerpoint.Presentations.Open(input_path, WithWindow=False)
+                    if out_ext == '.pdf':
+                        presentation.SaveAs(output_path, 32) # ppSaveAsPDF
+                    elif out_ext == '.png':
+                        presentation.SaveAs(output_path, 18) # ppSaveAsPNG
+                    elif out_ext == '.jpg':
+                        presentation.SaveAs(output_path, 17) # ppSaveAsJPG
+                    elif out_ext == '.docx':
+                        temp_pdf = input_path + ".temp.pdf"
+                        presentation.SaveAs(temp_pdf, 32)
+                        presentation.Close()
+                        presentation = None
+                        from pdf2docx import Converter
+                        cv = Converter(temp_pdf)
+                        cv.convert(output_path)
+                        cv.close()
+                        if os.path.exists(temp_pdf):
+                            os.remove(temp_pdf)
+                finally:
+                    if 'presentation' in locals() and presentation is not None:
+                        presentation.Close()
+                    powerpoint.Quit()
+            else:
+                import subprocess, tempfile, shutil
+                temp_dir = tempfile.mkdtemp()
+                base_name = os.path.splitext(os.path.basename(input_path))[0]
+                temp_pdf = os.path.join(temp_dir, base_name + ".pdf")
                 
-        # 2. Word processing (.doc / .docx)
-        elif in_ext in ['.doc', '.docx']:
-            import comtypes.client
-            word = comtypes.client.CreateObject('Word.Application')
-            try:
-                word.Visible = False
-                doc = word.Documents.Open(input_path)
+                try:
+                    if sys.platform == 'darwin':
+                        if out_ext in ['.pdf', '.key', '.pptx']:
+                             _mac_convert_via_applescript(in_ext, out_ext, input_path, output_path)
+                             shutil.rmtree(temp_dir, ignore_errors=True)
+                             return True, None
+                        _mac_convert_via_applescript(in_ext, '.pdf', input_path, temp_pdf)
+                    else:
+                        soffice_path = "soffice"
+                        if not shutil.which("soffice"):
+                             raise Exception("LibreOffice not found.")
+                        cmd = [soffice_path, "--headless", "--convert-to", "pdf", "--outdir", temp_dir, input_path]
+                        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if res.returncode != 0:
+                             raise Exception(f"LibreOffice error: {res.stderr.decode('utf-8', errors='ignore')}")
+                except Exception as e:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    raise e
+                
                 if out_ext == '.pdf':
-                    doc.SaveAs(output_path, FileFormat=17) # wdFormatPDF
-                elif out_ext in ['.txt', '.md']:
-                    doc.SaveAs(output_path, FileFormat=7, Encoding=65001) # wdFormatEncodedText UTF-8
-                doc.Close()
+                     shutil.move(temp_pdf, output_path)
+                elif out_ext in ['.png', '.jpg']:
+                     import fitz
+                     doc = fitz.open(temp_pdf)
+                     base, ext = os.path.splitext(output_path)
+                     for page_num in range(len(doc)):
+                         if stop_event and stop_event.is_set():
+                             doc.close()
+                             raise Exception("转换已手动取消")
+                         page = doc.load_page(page_num)
+                         pix = page.get_pixmap(dpi=300)
+                         out_name = f"{base}_page{page_num+1}{ext}"
+                         pix.save(out_name)
+                         pix = None  # 显式释放 C 内存
+                         page = None
+                     doc.close()
+                elif out_ext == '.docx':
+                     from pdf2docx import Converter
+                     cv = Converter(temp_pdf)
+                     cv.convert(output_path)
+                     cv.close()
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        # 2. Word/Pages processing (.doc / .docx / .pages)
+        elif in_ext in ['.doc', '.docx', '.pages']:
+            if os.name == 'nt':
+                import comtypes.client
+                word = comtypes.client.CreateObject('Word.Application')
+                try:
+                    word.Visible = False
+                    doc = word.Documents.Open(input_path)
+                    if out_ext == '.pdf':
+                        doc.SaveAs(output_path, FileFormat=17) # wdFormatPDF
+                    elif out_ext in ['.txt', '.md']:
+                        doc.SaveAs(output_path, FileFormat=7, Encoding=65001) # wdFormatEncodedText UTF-8
+                    doc.Close()
+                finally:
+                    word.Quit()
+            else:
+                import subprocess, tempfile, shutil
+                temp_dir = tempfile.mkdtemp()
+                base_name = os.path.splitext(os.path.basename(input_path))[0]
+                
+                try:
+                    if sys.platform == 'darwin':
+                        if out_ext in ['.pdf', '.pages', '.docx', '.txt', '.md']:
+                             _mac_convert_via_applescript(in_ext, out_ext, input_path, output_path)
+                             shutil.rmtree(temp_dir, ignore_errors=True)
+                             return True, None
+                    else:
+                        soffice_path = "soffice"
+                        if not shutil.which("soffice"):
+                             raise Exception("LibreOffice not found.")
+                        if out_ext == '.pdf':
+                             cmd = [soffice_path, "--headless", "--convert-to", "pdf", "--outdir", temp_dir, input_path]
+                             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             if res.returncode != 0:
+                                  raise Exception(f"LibreOffice error: {res.stderr.decode('utf-8', errors='ignore')}")
+                             shutil.move(os.path.join(temp_dir, base_name + ".pdf"), output_path)
+                        elif out_ext in ['.txt', '.md']:
+                             cmd = [soffice_path, "--headless", "--convert-to", "txt:Text (encoded):UTF8", "--outdir", temp_dir, input_path]
+                             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             if res.returncode != 0:
+                                  raise Exception(f"LibreOffice error: {res.stderr.decode('utf-8', errors='ignore')}")
+                             shutil.move(os.path.join(temp_dir, base_name + ".txt"), output_path)
+                except Exception as e:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    raise e
+                
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                        
+        # 2.5 Excel/Numbers processing (.numbers)
+        elif in_ext in ['.xls', '.xlsx', '.numbers']:
+            import subprocess, tempfile, shutil
+            temp_dir = tempfile.mkdtemp()
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            
+            if out_ext == '.pdf':
+                fmt = "pdf"
+            elif out_ext == '.xlsx':
+                fmt = "xlsx"
+            elif out_ext == '.csv':
+                fmt = "csv"
+            else:
+                fmt = out_ext.lstrip('.')
+                
+            try:
+                if sys.platform == 'darwin':
+                    if out_ext in ['.pdf', '.numbers', '.xlsx', '.csv', '.xls']:
+                         _mac_convert_via_applescript(in_ext, out_ext, input_path, output_path)
+                         shutil.rmtree(temp_dir, ignore_errors=True)
+                         return True, None
+                else:
+                    soffice_path = "soffice"
+                    if not shutil.which("soffice"):
+                         raise Exception("LibreOffice not found.")
+                    cmd = [soffice_path, "--headless", "--convert-to", fmt, "--outdir", temp_dir, input_path]
+                    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if res.returncode != 0:
+                         raise Exception(f"LibreOffice error: {res.stderr.decode('utf-8', errors='ignore')}")
+                    shutil.move(os.path.join(temp_dir, f"{base_name}.{fmt}"), output_path)
+            except Exception as e:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                raise e
             finally:
-                word.Quit()
+                shutil.rmtree(temp_dir, ignore_errors=True)
                         
         # 3. PDF processing
         elif in_ext == '.pdf':
@@ -120,53 +530,151 @@ def convert_document(input_path, output_path):
                 doc = fitz.open(input_path)
                 base, ext = os.path.splitext(output_path)
                 for page_num in range(len(doc)):
+                    if stop_event and stop_event.is_set():
+                        doc.close()
+                        raise Exception("转换已手动取消")
                     page = doc.load_page(page_num)
                     pix = page.get_pixmap(dpi=300)
                     out_name = f"{base}_page{page_num+1}{ext}"
                     pix.save(out_name)
+                    pix = None
+                    page = None
                 doc.close()
             elif out_ext == '.txt':
                 import fitz
                 doc = fitz.open(input_path)
                 with open(output_path, 'w', encoding='utf-8') as f:
                     for page in doc:
+                        if stop_event and stop_event.is_set():
+                            doc.close()
+                            raise Exception("转换已手动取消")
                         f.write(page.get_text())
                 doc.close()
                 
         # 4. Markdown processing
         elif in_ext in ['.md', '.markdown']:
             with open(input_path, 'r', encoding='utf-8') as f:
+                # Ensure literal representation of potential escapes to avoid python escape issues
                 text = f.read()
             
             if out_ext == '.txt':
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(text)
             elif out_ext == '.html':
-                html_wrapper = _get_md_html_wrapper(text)
+                html_wrapper = embed_local_images(_get_md_html_wrapper(text), os.path.dirname(input_path))
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(html_wrapper)
             elif out_ext == '.pdf':
-                html_wrapper = _get_md_html_wrapper(text)
-                from xhtml2pdf import pisa
-                with open(output_path, "w+b") as result_file:
-                    pisa_status = pisa.CreatePDF(html_wrapper, dest=result_file)
-                if pisa_status.err:
-                    return False, "xhtml2pdf failed to create PDF."
+                # Inject TOC if needed
+                if format_enhance and not text.lstrip().startswith("[TOC]"):
+                    text = "[TOC]\n\n" + text
+                # Convert markdown to HTML with TOC and extra extensions
+                html_wrapper = embed_local_images(_get_md_html_wrapper(text), os.path.dirname(input_path))
+                
+                user_playwright_path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "ms-playwright")
+                if os.path.exists(user_playwright_path):
+                    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = user_playwright_path
+                elif getattr(sys, 'frozen', False):
+                    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(sys._MEIPASS, "ms-playwright")
+                    
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    page = browser.new_page()
+                    page.set_content(html_wrapper, wait_until="networkidle")
+                    
+                    # wait for networkidle, but periodically check stop_event
+                    for _ in range(30):
+                        if stop_event and stop_event.is_set():
+                            browser.close()
+                            raise Exception("转换已手动取消")
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=1000)
+                            break
+                        except:
+                            pass
+
+                    if format_enhance:
+                        page.pdf(
+                            path=output_path,
+                            format="A4",
+                            print_background=True,
+                            display_header_footer=True,
+                            header_template='<span></span>',
+                            footer_template=(
+                                '<div style="width: 100%; display: flex; justify-content: center; align-items: flex-end; '
+                                'font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; '
+                                'color: #666; margin: 0; padding-bottom: 10px;">'
+                                '<span>- <span class="pageNumber"></span> -</span>'
+                                '</div>'
+                            ),
+                            margin={"top": "2cm", "bottom": "2.5cm", "left": "1.5cm", "right": "1.5cm"},
+                        )
+                    else:
+                        page.pdf(
+                            path=output_path,
+                            format="A4",
+                            margin={"top": "20px", "right": "20px", "bottom": "20px", "left": "20px"},
+                            print_background=True,
+                        )
+                    browser.close()
             elif out_ext == '.docx':
                 temp_html = input_path + ".temp.html"
-                html_wrapper = _get_md_html_wrapper(text)
+                html_wrapper = embed_local_images(_get_md_html_wrapper(text), os.path.dirname(input_path))
                 with open(temp_html, 'w', encoding='utf-8') as f:
                     f.write(html_wrapper)
                 
-                import comtypes.client
-                word = comtypes.client.CreateObject('Word.Application')
-                try:
-                    word.Visible = False
-                    doc = word.Documents.Open(os.path.abspath(temp_html))
-                    doc.SaveAs(output_path, FileFormat=16) # wdFormatDocumentDefault
-                    doc.Close()
-                finally:
-                    word.Quit()
+                if os.name == 'nt':
+                    import comtypes.client
+                    word = comtypes.client.CreateObject('Word.Application')
+                    try:
+                        word.Visible = False
+                        doc = word.Documents.Open(os.path.abspath(temp_html))
+                        doc.SaveAs(output_path, FileFormat=16) # wdFormatDocumentDefault
+                        doc.Close()
+                    finally:
+                        word.Quit()
+                        if os.path.exists(temp_html):
+                            try:
+                                os.remove(temp_html)
+                            except:
+                                pass
+                else:
+                    import subprocess, tempfile, shutil
+                    temp_dir = tempfile.mkdtemp()
+                    base_name = os.path.splitext(os.path.basename(temp_html))[0]
+                    
+                    try:
+                        if sys.platform == 'darwin':
+                            # HTML to DOCX natively using Word
+                            temp_out = os.path.join(temp_dir, base_name + ".docx")
+                            script = f"""
+                            set inFile to POSIX file "{os.path.abspath(temp_html)}"
+                            set outFile to POSIX file "{temp_out}"
+                            tell application "Microsoft Word"
+                                set myDoc to open inFile
+                                save as myDoc file name (outFile as string) file format format document
+                                close myDoc saving no
+                            end tell
+                            """
+                            res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+                            if res.returncode != 0:
+                                raise Exception(f"Microsoft Word conversion failed. Please ensure Word is installed. Error: {res.stderr.strip()}")
+                            shutil.move(temp_out, output_path)
+                        else:
+                            soffice_path = "soffice"
+                            if not shutil.which("soffice"):
+                                 raise Exception("LibreOffice not found.")
+                            cmd = [soffice_path, "--headless", "--convert-to", "docx", "--outdir", temp_dir, os.path.abspath(temp_html)]
+                            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            if res.returncode != 0:
+                                 raise Exception(f"LibreOffice error: {res.stderr.decode('utf-8', errors='ignore')}")
+                            shutil.move(os.path.join(temp_dir, base_name + ".docx"), output_path)
+                    except Exception as e:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        raise e
+                    finally:
+                        shutil.rmtree(temp_dir, ignore_errors=True)
                     if os.path.exists(temp_html):
                         try:
                             os.remove(temp_html)

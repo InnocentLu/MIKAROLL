@@ -1,5 +1,4 @@
 import os
-from PIL import Image
 try:
     import pillow_heif
     pillow_heif.register_heif_opener()
@@ -12,6 +11,7 @@ except ImportError:
     pass
 
 def convert_image(input_path, output_path):
+    from PIL import Image
     """
     Converts an image using Pillow.
     Handles mode conversions (like RGBA to RGB for JPEG).
